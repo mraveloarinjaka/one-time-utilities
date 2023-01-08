@@ -6,12 +6,16 @@
 
 (require '[pod.babashka.fswatcher :as fw])
 
+(defn ->resource-type
+  [source]
+  (if (fs/directory? source) :dir :file))
+
 (ns-unalias *ns* 'watch)
 
 (defmulti watch
   "Monitor a resource for file system events"
   (fn [& args] (let [source (first args)]
-                 (if (fs/directory? source) :dir :file)))
+                 (->resource-type source)))
   :default :file)
 
 (defn relevant?
@@ -51,6 +55,27 @@
   (fw/unwatch watcher))
 
 (def watch-file (get-method watch :file))
+
+(defn copy-file
+  [destination source]
+  (try
+    (fs/copy source destination
+             {:replace-existing true
+              :copy-attributes true})
+    (catch Exception e (println (.getMessage e)))))
+
+(defn sync
+  "Synchronize modifications on a resource file or directory"
+  [{:keys [source destination]}]
+  (println "sync" source "into" destination)
+  (let [resource-type (->resource-type source)
+        watch-fn  (get-method watch resource-type)
+        to-watch (watch-fn source :type :write
+                           :callback (fn [{src :path}]
+                                       (println "caught modification of" src)
+                                       (copy-file destination src)))]
+    (deref (promise))
+    (unwatch to-watch)))
 
 (comment
   
