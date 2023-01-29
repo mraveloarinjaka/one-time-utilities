@@ -66,14 +66,19 @@
 
 (defn sync
   "Synchronize modifications on a resource file or directory"
-  [{:keys [source destination]}]
-  (println "sync" source "into" destination)
-  (let [resource-type (->resource-type source)
+  {:org.babashka/cli {:coerce {:file-types []}}}
+  [{:keys [source destination file-types]
+    :or {destination (str (fs/temp-dir))
+         file-types []}}]
+  (println "sync" source "into" destination (when-not (empty? file-types) (str "filtering on " file-types)))
+  (let [file-types (set file-types)
+        resource-type (->resource-type source)
         watch-fn  (get-method watch resource-type)
         to-watch (watch-fn source :type :write
                            :callback (fn [{src :path}]
-                                       (println "caught modification of" src)
-                                       (copy-file destination src)))]
+                                       (when (or (empty? file-types) (file-types (fs/extension src)))
+                                         (println "caught modification of" src)
+                                         (copy-file destination src))))]
     (deref (promise))
     (unwatch to-watch)))
 
